@@ -7,11 +7,12 @@
 <title>Progress report</title>
 <style>
   :root {
+    --fig: #3B423B;
     --green: #2E7D32; --green-2: #1B5E20; --tint: #E8F3E8; --bg: #F5F7F4; --card: #FFFFFF;
     --text: #1B1F1B; --muted: #5A635A; --line: #DDE3DB; --up: #2E7D32; --down: #C62828; --accent: #F9A825;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #111511; --card: #1C221C; --text: #E8EDE6; --muted: #A3ADA1; --line: #2E372D; --tint: #213021; --up: #81C784; --down: #EF9A9A; }
+    :root { --fig: #C9D1C7; --bg: #111511; --card: #1C221C; --text: #E8EDE6; --muted: #A3ADA1; --line: #2E372D; --tint: #213021; --up: #81C784; --down: #EF9A9A; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -54,6 +55,23 @@
   .skip { opacity: .55; text-decoration: line-through; }
   .empty, .msg { color: var(--muted); padding: 24px 6px; text-align: center; }
   svg { display: block; width: 100%; height: auto; }
+  .figwrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr); gap: 8px; align-items: stretch; }
+  .col { display: flex; flex-direction: column; gap: 6px; }
+  .figure { width: 100%; height: 100%; max-height: 520px; color: color-mix(in srgb, var(--text) 70%, transparent); }
+  .mcard { flex: 1; min-height: 58px; border: 0; border-radius: 12px; background: var(--card); color: inherit; font: inherit; padding: 6px 4px;
+           display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; text-align: center; }
+  .mcard b { font-size: 13px; font-weight: 600; line-height: 1.2; }
+  .mcard span { font-size: 15px; }
+  .mcard small { font-size: 11px; font-weight: 700; }
+  .mcard small.up { color: var(--up); } .mcard small.down { color: var(--down); } .mcard small.flat { color: var(--muted); }
+  .mcard[disabled] { opacity: .45; cursor: default; }
+  .extras { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px; }
+  .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; z-index: 5; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg); border-radius: 22px 22px 0 0; padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+           max-width: 640px; margin: 0 auto; transform: translateY(105%); transition: transform .22s ease; }
+  .sheet.open { transform: none; } .sheet-bg.open { display: block; }
+  .sheet h3 { margin: 0 0 2px; font-size: 20px; }
+  .sheet .close { float: right; border: 0; background: var(--tint); color: inherit; border-radius: 18px; min-height: 40px; padding: 0 16px; font: inherit; font-weight: 600; cursor: pointer; }
   footer { text-align: center; color: var(--muted); font-size: 12px; padding: 10px 0 30px; }
 </style>
 </head>
@@ -69,6 +87,8 @@
 <nav id="tabs" role="tablist"></nav>
 <main id="main"><div class="msg">Loading the report…</div></main>
 <footer>Shared from the Recipe Tracker app.</footer>
+<div class="sheet-bg" id="sheet-bg"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"><div id="sheet-body"></div></div>
 <script>
 (function () {
   var PROJECT = "recipe-tracker-24899";
@@ -82,6 +102,7 @@
   var DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   function md(s) { var x = d(s); return MONTHS[x.getMonth()] + " " + x.getDate(); }
   function wmd(s) { var x = d(s); return DAYS[x.getDay()] + ", " + MONTHS[x.getMonth()] + " " + x.getDate(); }
+  function num2(v) { return (Math.round(v * 100) / 100).toString(); }
   function num(v) { return Math.abs(v % 1) < 0.005 ? String(Math.round(v)) : (Math.round(v * 10) / 10).toString(); }
 
   function badge(points, unit, lowerIsBetter) {
@@ -153,14 +174,55 @@
   }
 
   var LOWER = { weight: 1, bodyFat: 1, waist: 1, hips: 1, highHip: 1 };
-  function bodyTab(b) {
-    if (!b.length) return '<div class="empty">No measurements in this period.</div>';
-    return '<h2>Measurements</h2><div class="grid">' + b.map(function (m) {
-      var pts = m.points || [], last = pts[pts.length - 1];
-      return '<div class="item"><button aria-expanded="false" data-t><small style="color:var(--muted)">' + esc(m.label) + '</small><span class="big">' + num(last.value) + " " + esc(m.unit) + "</span>" + badge(pts, m.unit, !!LOWER[m.key]) + "</button>" +
-        '<div class="detail">' + chart(pts, m.unit) + lowHigh(pts, m.unit) + "</div></div>";
-    }).join("") + "</div>";
+  var LEFT = ["neck", "shoulders", "leftBiceps", "leftForearm", "waist", "leftThigh", "leftCalf"];
+  var RIGHT = ["weight", "chest", "rightBiceps", "rightForearm", "hips", "rightThigh", "rightCalf"];
+  var EXTRA = ["bodyFat", "muscle", "highHip"];
+  var NAMES = { neck: "Neck", shoulders: "Shoulders", leftBiceps: "Left biceps", rightBiceps: "Right biceps", leftForearm: "Left forearm",
+    rightForearm: "Right forearm", waist: "Waist", hips: "Hips", leftThigh: "Left thigh", rightThigh: "Right thigh", leftCalf: "Left calf",
+    rightCalf: "Right calf", weight: "Weight", chest: "Chest", bodyFat: "Body fat", muscle: "Muscle ratio", highHip: "High hip" };
+  var FIGURE = '<svg class="figure" viewBox="0 0 100 250" aria-hidden="true">       <path d="M55 27 C55.5 30 56 33 56 35 C62 38 70 38 75 41 C81 43 83.5 50 83 58 C84 70 86 80 87 92 C88 104 90 114 90 122 C91 128 89.5 134 86.5 134 C83.5 134 83 128 84 122 C83 112 80 100 78.5 92 C76.5 80 74 68 72.5 60 C71.5 72 68 86 68 98 C68 106 71 112 71.5 118 C72.5 140 70.5 160 68.5 175 C70.5 188 69 205 66.5 222 C66 230 70.5 236 70 240 C66 241.5 61 241.5 57 240.5 C56 236 57 230 58 222 C58 205 57 190 58 175 C57 160 54 140 52 128 C51.5 127.5 50.5 127 50 127 C49.5 127 48.5 127.5 48 128 C46 140 43 160 42 175 C43 190 42 205 42 222 C43 230 44 236 43 240.5 C39 241.5 34 241.5 30 240 C29.5 236 34 230 33.5 222 C31 205 29.5 188 31.5 175 C29.5 160 27.5 140 28.5 118 C29 112 32 106 32 98 C32 86 28.5 72 27.5 60 C26 68 23.5 80 21.5 92 C20 100 17 112 16 122 C17 128 16.5 134 13.5 134 C10.5 134 9 128 10 122 C10 114 12 104 13 92 C14 80 16 70 17 58 C16.5 50 19 43 25 41 C30 38 38 38 44 35 C44 33 44.5 30 45 27 Z" fill="var(--card)" stroke="var(--fig)" stroke-width="1.6" stroke-linejoin="round"/>       <path d="M31.2 106 L68.8 106 C70.8 112 71.6 120 72.2 140 L53.8 141 L50 129 L46.2 141 L27.8 140 C28.4 120 29.2 112 31.2 106 Z" fill="var(--fig)" opacity=".85"/>       <g fill="none" stroke="var(--line)" stroke-width="1.1" stroke-linecap="round">         <path d="M51.5 62 Q60 66 69 58"/><path d="M48.5 62 Q40 66 31 58"/><path d="M50 50 L50 98"/>         <path d="M57.5 172 Q63 176 67.5 172"/><path d="M42.5 172 Q37 176 32.5 172"/>       </g>       <circle cx="50" cy="101" r=".9" fill="var(--line)"/>       <ellipse cx="50" cy="15.5" rx="10.5" ry="13" fill="var(--card)" stroke="var(--fig)" stroke-width="1.6"/>       <ellipse cx="38.9" cy="15.5" rx="1.3" ry="2.5" fill="none" stroke="var(--fig)" stroke-width="1.1"/>       <ellipse cx="61.1" cy="15.5" rx="1.3" ry="2.5" fill="none" stroke="var(--fig)" stroke-width="1.1"/>     </svg>';
+  var byKey = {};
+
+  function mcard(k) {
+    var m = byKey[k], label = esc(m ? m.label : NAMES[k]);
+    if (!m || !m.points.length) return '<button class="mcard" disabled><b>' + label + "</b><span>–</span></button>";
+    var pts = m.points, last = pts[pts.length - 1], mark = "";
+    if (pts.length > 1) {
+      var diff = last.value - pts[0].value;
+      if (Math.abs(diff) >= 0.01) {
+        var good = LOWER[k] ? diff < 0 : diff > 0;
+        mark = '<small class="' + (good ? "up" : "down") + '">' + (diff > 0 ? "▲ " : "▼ ") + num2(Math.abs(diff)) + "</small>";
+      } else mark = '<small class="flat">no change</small>';
+    }
+    return '<button class="mcard" data-m="' + k + '"><b>' + label + "</b><span>" + num2(last.value) + " " + esc(m.unit) + "</span>" + mark + "</button>";
   }
+
+  function bodyTab(b) {
+    byKey = {};
+    b.forEach(function (m) { byKey[m.key] = m; });
+    if (!b.length) return '<div class="empty">No measurements in this period.</div>';
+    return '<p class="empty" style="padding:4px 0 10px">Tap a measurement to see its chart.</p>' +
+      '<div class="figwrap"><div class="col">' + LEFT.map(mcard).join("") + "</div>" + FIGURE +
+      '<div class="col">' + RIGHT.map(mcard).join("") + '</div></div><div class="extras">' + EXTRA.map(mcard).join("") + "</div>";
+  }
+
+  function openSheet(k) {
+    var m = byKey[k]; if (!m) return;
+    var pts = m.points, last = pts[pts.length - 1];
+    document.getElementById("sheet-body").innerHTML =
+      '<button class="close" id="sheet-close">Close</button><h3>' + esc(m.label) + '</h3><p style="margin:0 0 10px;color:var(--muted)">Latest ' +
+      num2(last.value) + " " + esc(m.unit) + " · " + md(last.date) + " " + badge(pts, m.unit, !!LOWER[k]) + "</p>" + chart(pts, m.unit) + lowHigh(pts, m.unit);
+    document.getElementById("sheet").classList.add("open");
+    document.getElementById("sheet-bg").classList.add("open");
+  }
+  function closeSheet() {
+    document.getElementById("sheet").classList.remove("open");
+    document.getElementById("sheet-bg").classList.remove("open");
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-m]"); if (b) openSheet(b.dataset.m);
+    if (e.target.id === "sheet-close" || e.target.id === "sheet-bg") closeSheet();
+  });
 
   function render(r) {
     document.getElementById("title").textContent = (r.name ? r.name + "’s progress" : "Progress");
