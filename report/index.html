@@ -224,12 +224,42 @@
     if (e.target.id === "sheet-close" || e.target.id === "sheet-bg") closeSheet();
   });
 
+  function clock(t) { var h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s2 = t % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s2).padStart(2, "0"); }
+  function runsTab(rs) {
+    var list = rs.list || [], u = rs.unit || "km";
+    if (!list.length) return '<div class="empty">No runs in this period.</div>';
+    var total = list.reduce(function (a, x) { return a + x.distance; }, 0);
+    var longest = list.reduce(function (a, x) { return x.distance > a.distance ? x : a; }, list[0]);
+    var outdoor = list.filter(function (x) { return !x.treadmill && x.distance > 0.05; });
+    var paces = outdoor.map(function (x) { return { date: x.date, value: Math.round(x.seconds / x.distance / 60 * 100) / 100 }; });
+    var best = outdoor.reduce(function (a, x) { return !a || x.seconds / x.distance < a.seconds / a.distance ? x : a; }, null);
+    var h = '<div class="stats"><div class="stat"><b>' + list.length + '</b><span>runs</span></div>' +
+      '<div class="stat"><b>' + num(total) + '</b><span>' + u + ' total</span></div>' +
+      '<div class="stat"><b>' + num(longest.distance) + '</b><span>' + u + ' longest</span></div></div>';
+    // distance per week
+    var weeks = {}; list.forEach(function (x) { var dd = d(x.date); var day = (dd.getDay() + 6) % 7; dd.setDate(dd.getDate() - day);
+      var k = dd.getFullYear() + "-" + String(dd.getMonth() + 1).padStart(2, "0") + "-" + String(dd.getDate()).padStart(2, "0"); weeks[k] = (weeks[k] || 0) + x.distance; });
+    var wk = Object.keys(weeks).sort().map(function (k) { return { date: k, value: Math.round(weeks[k] * 10) / 10 }; });
+    h += '<h2>Distance per week (' + u + ')</h2><div class="item" style="padding:12px">' + chart(wk, u) + "</div>";
+    if (paces.length > 1) {
+      h += '<h2>Pace (min/' + u + ', lower is faster)</h2><div class="item" style="padding:12px">' + chart(paces, "min") +
+        (best ? '<div class="range"><span>Fastest ' + clock(Math.round(best.seconds / best.distance)) + " /" + u + " (" + md(best.date) + ")</span></div>" : "") + "</div>";
+    }
+    h += '<h2>All runs</h2><div class="list">' + list.slice().reverse().map(function (x) {
+      var pace = x.distance > 0.05 ? clock(Math.round(x.seconds / x.distance)) + " /" + u : "–";
+      return '<div class="item"><button><span class="name"><b>' + esc(x.title || (x.treadmill ? "Treadmill run" : "Run")) + "</b><small>" + wmd(x.date) + " · " + clock(x.seconds) + " · " + pace +
+        (x.avgHr ? " · " + Math.round(x.avgHr) + " bpm" : "") + '</small></span><span class="badge flat">' + num(x.distance) + " " + u + "</span></button></div>";
+    }).join("") + "</div>";
+    return h;
+  }
+
   function render(r) {
     document.getElementById("title").textContent = (r.name ? r.name + "’s progress" : "Progress");
     document.getElementById("period").textContent = md(r.from) + " – " + md(r.to) + ", " + d(r.to).getFullYear();
     document.title = document.getElementById("title").textContent;
     var tabs = [];
     if (r.workouts) tabs.push(["Workouts", function () { return workoutsTab(r.workouts, r.from, r.to); }]);
+    if (r.runs) tabs.push(["Runs", function () { return runsTab(r.runs); }]);
     if (r.body) tabs.push(["Body", function () { return bodyTab(r.body); }]);
     var nav = document.getElementById("tabs");
     if (tabs.length < 2) nav.style.display = "none";
