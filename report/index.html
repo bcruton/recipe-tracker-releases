@@ -72,6 +72,20 @@
   .sheet.open { transform: none; } .sheet-bg.open { display: block; }
   .sheet h3 { margin: 0 0 2px; font-size: 20px; }
   .sheet .close { float: right; border: 0; background: var(--tint); color: inherit; border-radius: 18px; min-height: 40px; padding: 0 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  .macros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .macro { background: var(--card); border-radius: 16px; padding: 12px 10px; }
+  .macro small { display: block; font-size: 12px; color: var(--muted); font-weight: 600; }
+  .macro b { font-size: 24px; }
+  .macro .bar { height: 8px; border-radius: 4px; background: var(--line); margin-top: 8px; overflow: hidden; }
+  .macro .bar i { display: block; height: 100%; border-radius: 4px; }
+  .macro .of { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .wk { background: var(--card); border-radius: 16px; padding: 12px 14px; }
+  .wk .top { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 8px; }
+  .wk .top span { color: var(--muted); }
+  .wk .row { display: grid; grid-template-columns: 62px 1fr 64px; align-items: center; gap: 8px; font-size: 13px; margin-top: 5px; }
+  .wk .track { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+  .wk .track i { display: block; height: 100%; border-radius: 5px; }
+  .wk .row b { text-align: right; font-weight: 600; }
   footer { text-align: center; color: var(--muted); font-size: 12px; padding: 10px 0 30px; }
 </style>
 </head>
@@ -253,6 +267,38 @@
     return h;
   }
 
+  var MC = { protein: "#EF6C00", carbs: "#1E88E5", fat: "#8E24AA" };
+  function foodTab(f) {
+    var weeks = f.weeks || [];
+    if (!f.days) return '<div class="empty">No food logged in this period.</div>';
+    var avg = f.avg, goal = f.goal;
+    var cal = avg.protein * 4 + avg.carbs * 4 + avg.fat * 9 || 1;
+    function card(k, label, per) {
+      var pct = Math.round(avg[k] * per / cal * 100);
+      var g = goal ? goal[k] : 0, fill = g ? Math.min(100, avg[k] / g * 100) : pct;
+      return '<div class="macro"><small>' + label + '</small><b>' + avg[k] + '</b> g' +
+        '<div class="bar"><i style="width:' + fill + '%;background:' + MC[k] + '"></i></div>' +
+        '<div class="of">' + (g ? "goal " + g + " g · " : "") + pct + "% of calories</div></div>";
+    }
+    var h = '<p class="empty" style="padding:4px 0 10px">Average per day · ' + f.days + ' days logged</p>' +
+      '<div class="macros">' + card("protein", "Protein", 4) + card("carbs", "Carbs", 4) + card("fat", "Fat", 9) + "</div>" +
+      '<div class="stats" style="grid-template-columns:1fr;margin-top:8px"><div class="stat"><b>' + avg.kcal + "</b><span>calories a day" +
+      (goal ? " · goal " + goal.kcal : "") + "</span></div></div>";
+    var max = { protein: 1, carbs: 1, fat: 1 };
+    weeks.forEach(function (w) { ["protein", "carbs", "fat"].forEach(function (k) { max[k] = Math.max(max[k], w[k], goal ? goal[k] : 0); }); });
+    h += "<h2>Week by week (average per day)</h2><div class='list'>" + weeks.slice().reverse().map(function (w) {
+      function row(k, label) {
+        return '<div class="row"><span>' + label + '</span><div class="track"><i style="width:' + Math.round(w[k] / max[k] * 100) + "%;background:" + MC[k] + '"></i></div><b>' +
+          w[k] + " g" + (goal ? '<small style="color:var(--muted);font-weight:400"> /' + goal[k] + "</small>" : "") + "</b></div>";
+      }
+      return '<div class="wk"><div class="top"><b>Week of ' + md(w.week) + "</b><span>" + w.kcal + " cal/day · " + w.days + " day" + (w.days === 1 ? "" : "s") + "</span></div>" +
+        row("protein", "Protein") + row("carbs", "Carbs") + row("fat", "Fat") + "</div>";
+    }).join("") + "</div>";
+    if (weeks.length > 1) h += "<h2>Protein per day, by week (g)</h2><div class='item' style='padding:12px'>" +
+      chart(weeks.map(function (w) { return { date: w.week, value: w.protein }; }), "g") + "</div>";
+    return h;
+  }
+
   function render(r) {
     document.getElementById("title").textContent = (r.name ? r.name + "’s progress" : "Progress");
     document.getElementById("period").textContent = md(r.from) + " – " + md(r.to) + ", " + d(r.to).getFullYear();
@@ -260,6 +306,7 @@
     var tabs = [];
     if (r.workouts) tabs.push(["Workouts", function () { return workoutsTab(r.workouts, r.from, r.to); }]);
     if (r.runs) tabs.push(["Runs", function () { return runsTab(r.runs); }]);
+    if (r.food) tabs.push(["Food", function () { return foodTab(r.food); }]);
     if (r.body) tabs.push(["Body", function () { return bodyTab(r.body); }]);
     var nav = document.getElementById("tabs");
     if (tabs.length < 2) nav.style.display = "none";
