@@ -172,7 +172,9 @@
       var pts = e.points || [], last = pts.length ? num(pts[pts.length - 1].value) + " " + esc(e.unit || "") : "no weight";
       return '<div class="item"><button aria-expanded="false" data-t><span class="name"><b>' + esc(e.name) + "</b><small>" + last +
         (e.lastReps ? " × " + esc(e.lastReps) : "") + " · done " + e.times + "×</small></span>" + badge(pts, e.unit || "") + '<span class="chev">›</span></button>' +
-        '<div class="detail">' + (pts.length ? chart(pts, e.unit || "") + lowHigh(pts, e.unit || "") : '<div class="empty">No weights recorded.</div>') + "</div></div>";
+        '<div class="detail">' + (pts.length ? chart(pts, e.unit || "") + lowHigh(pts, e.unit || "") : '<div class="empty">No weights recorded.</div>') +
+        ((e.repPoints || []).length > 1 ? '<div class="sub" style="margin-top:12px;font-weight:600">' + (e.repUnit === "sec" ? "Time" : "Reps") + "</div>" + chart(e.repPoints, e.repUnit || "reps") + lowHigh(e.repPoints, e.repUnit || "reps") : "") +
+        "</div></div>";
     }).join("") + "</div>";
     h += "<h2>Sessions</h2>";
     if (!s.length) h += '<div class="empty">No workouts in this period.</div>';
